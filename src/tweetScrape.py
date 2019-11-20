@@ -19,10 +19,10 @@ import matplotlib.pyplot as plt
 engine = create_engine('mysql+mysqlconnector://root:Fandri54@localhost/twitter?host=localhost?port=3306')
 conn = engine.connect()
 # print(conn)
-ACCESS_TOKEN = '68150221-OzSdaX7aQODB1CvWNrcyU6fRvqw6miJkUIKJ9ixuR'
-ACCESS_SECRET = '6HS4Jhs2BpbiQ56BjVKqooxpt59yAkd14QfTx8Ymt6Q5E'
-CONSUMER_KEY = 'YqdIu04vS4rVeZC9qUixfV9G0'
-CONSUMER_SECRET = 'IIVZ1Twfr8Qcdk89PEYHJg8NKP9mB8UTyGsYOikhdYqnvbCu92'
+ACCESS_TOKEN = ''
+ACCESS_SECRET = ''
+CONSUMER_KEY = ''
+CONSUMER_SECRET = ''
 
 oauth = OAuth (ACCESS_TOKEN, ACCESS_SECRET, CONSUMER_KEY, CONSUMER_SECRET)
 
