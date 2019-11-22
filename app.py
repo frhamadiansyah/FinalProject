@@ -32,32 +32,6 @@ def word_extract(x):
     return hashtags
 
 
-# def word_cloud_positive(df, column):
-#     plt.figure(figsize = (12,8))
-#     text = " ".join(review for review in df[df['sentimen'] == 1][column])
-
-#     # Create and generate a word cloud image:
-#     wordcloud = WordCloud().generate(text)
-
-#     # Display the generated image:
-#     plt.imshow(wordcloud, interpolation='bilinear')
-#     plt.axis("off")
-#     plt.show()
-#     plt.savefig('positive_cloud.png')
-
-# def word_cloud_negative(df, column):
-#     plt.figure(figsize = (12,8))
-#     text = " ".join(review for review in df[df['sentimen'] == 0][column])
-
-#     # Create and generate a word cloud image:
-#     wordcloud = WordCloud().generate(text)
-
-#     # Display the generated image:
-#     plt.imshow(wordcloud, interpolation='bilinear')
-#     plt.axis("off")
-#     # plt.show()
-#     plt.savefig('negative_cloud.png')
-
 
 timeInterval = 90
 
@@ -73,9 +47,11 @@ app.layout = html.Div(children=[
             html.Div([
                 html.P('Please input keyword : '),
                 html.Div([
+                    
                     html.Div(dcc.Input(id='search-tweet-bar', value='jokowi', type='text'),className = 'col-3', style = {'margin-top' : '25px', 'margin-bottom' : '25px'}),
                     html.Div(html.Button('Search', id = 'search-tweet'), className = 'col-3', style = {'margin-top' : '25px', 'margin-bottom' : '25px'}),
                 ], className = 'row'),
+                html.Div(children = html.H2("This Dashboard Shows Tweet's Containing"), style = {'text-align' : 'center'}),
                 html.Div(id='search-keyword', children = 'jokowi', style = {'text-align' : 'center'}),
                 html.Div(id='live-update-graph',className = 'col-12', style = {'margin-top' : '25px', 'margin-bottom' : '25px'}),
                 html.Div(id='live-update-table', style = {'margin-top' : '25px', 'margin-bottom' : '25px'},className = 'col-12'),
@@ -140,8 +116,6 @@ app.layout = html.Div(children=[
     'margin' : '0 auto'
 }
 )
-
-
 
 
 # Update twitter dashboard
@@ -238,6 +212,7 @@ def update_metrics(n, x1):
     a_positive = nltk.FreqDist(word_positive)
     d_positive = pd.DataFrame({'Hashtag': list(a_positive.keys()),
                     'Count': list(a_positive.values())})
+    d_positive = d_positive[d_positive['Hashtag'] != x1]
     # selecting top 10 most frequent hashtags     
     d_positive = d_positive.nlargest(columns="Count", n = 10) 
 
@@ -258,7 +233,8 @@ def update_metrics(n, x1):
     a_negative = nltk.FreqDist(word_negative)
     d_negative = pd.DataFrame({'Hashtag': list(a_negative.keys()),
                     'Count': list(a_negative.values())})
-    # selecting top 10 most frequent hashtags     
+    # selecting top 10 most frequent hashtags  
+    d_negative = d_negative[d_negative['Hashtag'] != x1]   
     d_negative = d_negative.nlargest(columns="Count", n = 10)
 
     negative_graph = dcc.Graph(

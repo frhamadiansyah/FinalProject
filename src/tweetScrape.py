@@ -29,7 +29,7 @@ oauth = OAuth (ACCESS_TOKEN, ACCESS_SECRET, CONSUMER_KEY, CONSUMER_SECRET)
 twitter = Twitter(auth = oauth)
 
 
-loadModel = pickle.load(open('linearsvc_binary.sav', 'rb'))
+loadModel = pickle.load(open('linearsvc_binary(1).sav', 'rb'))
 
 
 

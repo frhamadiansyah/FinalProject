@@ -24,7 +24,7 @@ for index, row in kamus_alay.iterrows():
     kamus[row['Alay']] = row['KBBI']
 
 
-loadModel = pickle.load(open('linearsvc_binary.sav', 'rb'))
+loadModel = pickle.load(open('linearsvc_binary(1).sav', 'rb'))
 
 
 def text_process(text):
