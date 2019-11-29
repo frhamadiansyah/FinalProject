@@ -6,12 +6,12 @@ import pandas as pd
 import plotly.graph_objs as go
 from dash.dependencies import Input, Output, State
 import datetime
-from src.tweetScrape import append_db
+from src.tweetScrape import append_db, text_process, loadModel, database
 import pickle
-from src.text_process import text_process, loadModel
-from sqlalchemy import create_engine
-from PIL import Image
-from wordcloud import WordCloud, STOPWORDS, ImageColorGenerator
+# from src.text_process import text_process, loadModel
+# from sqlalchemy import create_engine
+# from PIL import Image
+# from wordcloud import WordCloud, STOPWORDS, ImageColorGenerator
 import matplotlib.pyplot as plt
 import nltk
 import re
@@ -21,15 +21,25 @@ external_stylesheets = ['https://codepen.io/chriddyp/pen/bWlwgP.css']
 
 app = dash.Dash(__name__, external_stylesheets = external_stylesheets)
 
-def word_extract(x):
-    hashtags = []
-    # Loop over the words in the tweet
+# server = app.server
+
+database = database
+
+def bigram_extract(x):
+    word = {}
     for i in x:
         ht = re.findall(r"(\w+)", i)
-        for j in ht:
-          hashtags.append(j)
+        ht = nltk.bigrams(ht)
+        ht = nltk.FreqDist(ht)
+#         print (dict(ht))
+        for key, val in dict(ht).items():
+            key = ' '.join(key)
+            if key in word.keys():
+                word[key] += val
+            else:
+                word[key] = val
 
-    return hashtags
+    return word
 
 
 
@@ -61,8 +71,8 @@ app.layout = html.Div(children=[
                 
 
                 html.Div([
-                    html.Div(id = 'positive-graph', className = 'col-6'),
                     html.Div(id = 'negative-graph', className = 'col-6'),
+                    html.Div(id = 'positive-graph', className = 'col-6'),
                 ], className = 'row'),
 
                 dcc.Interval(
@@ -122,20 +132,23 @@ app.layout = html.Div(children=[
 @app.callback([Output('live-update-graph', 'children'),
                Output('live-update-table', 'children'),
                Output('live-update-influencer', 'children'),
-               Output('positive-graph', 'children'),
-               Output('negative-graph','children')],
+               Output('negative-graph', 'children'),
+               Output('positive-graph','children')],
               [Input('interval-component', 'n_intervals')],
                [State('search-keyword', 'children')])
 
 def update_metrics(n, x1):
     print ('execute')
-    temp = append_db(x1,100)
-    data = pd.DataFrame(temp, 
-            columns = ['index','created_at','source','text','user_id','user_screen_name','user_name','user_created_at','user_follower_count', 'text_clean','sentimen','sentimen_neg'])
-    data.index = data['index']
-    data.drop('index', axis = 1, inplace = True)
-    data['created_at'] = pd.to_datetime(data['created_at'], utc = True)
-    data['user_created_at'] = pd.to_datetime(data['user_created_at'], utc = True)
+    global database
+    # database[' '.join(x1.split())] = append_db(x1,100)
+    data = append_db(x1,100)
+    # temp = append_db(x1,100)
+    # data = pd.DataFrame(temp, 
+    #         columns = ['index','created_at','source','text','user_id','user_screen_name','user_name','user_created_at','user_follower_count', 'text_clean','sentimen','sentimen_neg'])
+    # data.index = data['index']
+    # data.drop('index', axis = 1, inplace = True)
+    # data['created_at'] = pd.to_datetime(data['created_at'], utc = True)
+    # data['user_created_at'] = pd.to_datetime(data['user_created_at'], utc = True)
     data_display = data[['created_at','user_screen_name','text', 'sentimen']]
     data_display = data_display.sort_values(by = 'created_at', ascending = False)
     data['created_at'] = data['created_at'].apply(lambda x : x.replace(second = 0, microsecond=0))
@@ -162,8 +175,8 @@ def update_metrics(n, x1):
                 figure = {
                 'data': [
                     go.Bar(x = group.count().index, y = group.count()['text'], name = 'total'),
-                    go.Scatter(x = group.count().index, y = group.sum()['sentimen'], mode = 'lines', name = 'positive'),
-                    go.Scatter(x = group.count().index, y = group.sum()['sentimen_neg'], mode = 'lines', name = 'negative')
+                    go.Scatter(x = group.count().index, y = group.sum()['sentimen'], mode = 'lines', name = 'positive', marker = dict(color = '#2ca02c')),
+                    go.Scatter(x = group.count().index, y = group.sum()['sentimen_neg'], mode = 'lines', name = 'negative', marker = dict(color = '#d62728'))
 
                     # {'x': group.count().index, 'y': group.count()['text'], 'type': 'line', 'marker' : '*', 'name': 'total'},
                     # {'x': group.count().index, 'y': group.sum()['sentimen'], 'type': 'line', 'name': 'positive'},
@@ -193,26 +206,24 @@ def update_metrics(n, x1):
                 'data': [
                     {'x': bargraphX_list_neg,
                      'y': bargraphY_list,
-                      'type': 'bar', 'name': 'positive', 'orientation' : 'h',
-                      'hovertext' : hovertext
+                      'type': 'bar', 'name': 'negative', 'orientation' : 'h',
+                      'hovertext' : hovertext, 'marker' :dict(color = '#d62728')
                       },
                       {'x': bargraphX_list_pos,
                      'y': bargraphY_list,
-                      'type': 'bar', 'name': 'negative', 'orientation' : 'h',
-                      'hovertext' : hovertext
+                      'type': 'bar', 'name': 'positive', 'orientation' : 'h',
+                      'hovertext' : hovertext, 'marker' : dict(color = '#2ca02c')
                       }
                 ],
                 'layout': {'title': 'User with most tweets about {}'.format(x1), 'barmode' : 'stack'}
             }
     )
 
-    word_positive = word_extract(data[data['sentimen'] == 1]['text_clean'])
-    word_negative = word_extract(data[data['sentimen'] == 0]['text_clean'])
 
-    a_positive = nltk.FreqDist(word_positive)
+    a_positive = bigram_extract(data[data['sentimen'] == 1]['text_clean'])
     d_positive = pd.DataFrame({'Hashtag': list(a_positive.keys()),
                     'Count': list(a_positive.values())})
-    d_positive = d_positive[d_positive['Hashtag'] != x1]
+    # d_positive = d_positive[d_positive['Hashtag'].apply(lambda x : x[0]!= x1 & x[1]!= x1 ) == True]
     # selecting top 10 most frequent hashtags     
     d_positive = d_positive.nlargest(columns="Count", n = 10) 
 
@@ -220,7 +231,7 @@ def update_metrics(n, x1):
                 id='Positive-word-chart',
                 figure = {
                 'data': [
-                    go.Bar(x = d_positive['Hashtag'], y = d_positive['Count'], name = 'positive_word'),
+                    go.Bar(x = d_positive['Hashtag'], y = d_positive['Count'], name = 'positive_word', marker = dict(color = '#2ca02c')),
                     
                     # {'x': group.count().index, 'y': group.count()['text'], 'type': 'line', 'marker' : '*', 'name': 'total'},
                     # {'x': group.count().index, 'y': group.sum()['sentimen'], 'type': 'line', 'name': 'positive'},
@@ -230,18 +241,18 @@ def update_metrics(n, x1):
             }
     )
 
-    a_negative = nltk.FreqDist(word_negative)
+    a_negative = bigram_extract(data[data['sentimen'] == 0]['text_clean'])
     d_negative = pd.DataFrame({'Hashtag': list(a_negative.keys()),
                     'Count': list(a_negative.values())})
     # selecting top 10 most frequent hashtags  
-    d_negative = d_negative[d_negative['Hashtag'] != x1]   
+    # d_negative = d_negative[d_negative['Hashtag'].apply(lambda x : x[0]!= x1 & x[1]!= x1 ) == True]   
     d_negative = d_negative.nlargest(columns="Count", n = 10)
 
     negative_graph = dcc.Graph(
                 id='Negative-word-chart',
                 figure = {
                 'data': [
-                    go.Bar(x = d_negative['Hashtag'], y = d_negative['Count'], name = 'negative_word'),
+                    go.Bar(x = d_negative['Hashtag'], y = d_negative['Count'], name = 'negative_word', marker = dict(color = '#d62728')),
                     
                     # {'x': group.count().index, 'y': group.count()['text'], 'type': 'line', 'marker' : '*', 'name': 'total'},
                     # {'x': group.count().index, 'y': group.sum()['sentimen'], 'type': 'line', 'name': 'positive'},
@@ -251,7 +262,7 @@ def update_metrics(n, x1):
             }
     )
 
-    return graph , tab, tweet_user, positive_graph, negative_graph
+    return graph , tab, tweet_user, negative_graph, positive_graph
 
 
 ## Update search keyword
@@ -262,6 +273,8 @@ def update_metrics(n, x1):
 )
 
 def search_tweet(n_clicks, x1):
+    global database
+    database = {}
     return x1
 
 

@@ -8,16 +8,21 @@ import pandas as pd
 import datetime
 import time
 from twitter import Twitter, OAuth
-from sqlalchemy import create_engine
+# from sqlalchemy import create_engine
 from bs4 import BeautifulSoup
 import pickle
-from src.text_process import text_process, loadModel
-from PIL import Image
-from wordcloud import WordCloud, STOPWORDS, ImageColorGenerator
+# from src.text_process import text_process, loadModel
+# from PIL import Image
+# from wordcloud import WordCloud, STOPWORDS, ImageColorGenerator
 import matplotlib.pyplot as plt
+from bs4 import BeautifulSoup
+import string
+from nltk.corpus import stopwords
+from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
+import re
 
-engine = create_engine('mysql+mysqlconnector://root:Fandri54@localhost/twitter?host=localhost?port=3306')
-conn = engine.connect()
+# engine = create_engine('mysql+mysqlconnector://root:Fandri54@localhost/twitter?host=localhost?port=3306')
+# conn = engine.connect()
 # print(conn)
 ACCESS_TOKEN = ''
 ACCESS_SECRET = ''
@@ -31,6 +36,56 @@ twitter = Twitter(auth = oauth)
 
 loadModel = pickle.load(open('linearsvc_binary(1).sav', 'rb'))
 
+kamus_alay = pd.read_csv("kamus_slang.csv", index_col = 0)
+
+kamus = {}
+# kamus_alay[kamus_alay['Alay'] == 'gw']
+for index, row in kamus_alay.iterrows():
+    kamus[row['Alay']] = row['KBBI']
+
+def text_process(text):
+    ##Clean_Link
+    
+    #lowercase all
+    text = text.lower()
+    #hapus RT
+
+    text=re.sub(r'^rt @[^\s]+','',text)
+    #hapus @
+
+    text=re.sub(r'@\S+','',text)
+    
+    #text = re.sub(',','',text)
+    text=re.sub(r'http\S+','',text)
+    #hapus \n
+    text=re.sub('\n',' ',text)
+    #hapus hashtag
+    text = re.sub(r'#\S+','',text)
+    
+    ## hapus punc
+    hapus = string.punctuation + '0123456789'
+    text = [char for char in text if char not in hapus]
+    text = ''.join(text)
+    
+    def hapus_hurufdouble(s): 
+        #look for 2 or more repetitions of character and replace with the character itself
+        pattern = re.compile(r"(.)\1{1,}", re.DOTALL)
+        return pattern.sub(r"\1\1", s)
+    
+    ## Substitute slang
+    text = [hapus_hurufdouble(word) for word in text.split()]
+    global kamus
+    for i in range(len(text)):
+        if text[i] in kamus.keys():
+            text[i] = kamus[text[i]]
+    
+    
+    ## Stemming
+    factory = StemmerFactory()
+    stemmer = factory.create_stemmer()
+
+    ## Hapus stop words
+    return ' '.join([stemmer.stem(word) for word in text if word not in stopwords.words('indonesian')])
 
 
 
@@ -74,41 +129,93 @@ def clean_and_predict(df):
 
     return df
 
-
+database = {}
 
 def append_db(search, n):
     total = create_tweet_df(search,n)
     search = '_'.join(search.split())
+    global database
     # print(total.columns)
-    tableName = search+'_'+str(datetime.datetime.now().day)+str(datetime.datetime.now().month)+str(datetime.datetime.now().year)    
-    try :
+    # tableName = search+'_'+str(datetime.datetime.now().day)+str(datetime.datetime.now().month)+str(datetime.datetime.now().year)    
+    if search in database.keys() :
         print('try')
-        all_db = conn.execute('select * from {}'.format(tableName)).fetchall()
+        all_db = database[search]
+        # all_db = conn.execute('select * from {}'.format(tableName)).fetchall()
         print ('succeed')
-        all_db = pd.DataFrame(all_db, columns = ['index','created_at','source','text','user_id','user_screen_name','user_name','user_created_at','user_follower_count', 'text_clean','sentimen','sentimen_neg'])
-        all_db.index = all_db['index']
-        all_db.drop('index', axis = 1, inplace = True)
-        all_db['created_at'] = pd.to_datetime(all_db['created_at'], utc = True)
+        # all_db = pd.DataFrame(all_db, columns = ['index','created_at','source','text','user_id','user_screen_name','user_name','user_created_at','user_follower_count', 'text_clean','sentimen','sentimen_neg'])
+        # all_db.index = all_db['index']
+        # all_db.drop('index', axis = 1, inplace = True)
+        # all_db['created_at'] = pd.to_datetime(all_db['created_at'], utc = True)
         temp = total[total['created_at'] > all_db['created_at'].max()]
-        if len(temp) > 0:
-            conn.execute('ALTER TABLE {}'.format(tableName))
+        if (len(temp) > 0) & ((total['created_at'].min() - all_db['created_at'].max()).seconds <= 120):
+            # conn.execute('ALTER TABLE {}'.format(tableName))
             temp = clean_and_predict(temp)
             temp = temp.sort_values(by = 'created_at')
             # print(temp.columns)
-            temp.to_sql(con=conn, name=tableName, if_exists='append') #
-            return conn.execute('select * from {}'.format(tableName)).fetchall()
+            # temp.to_sql(con=conn, name=tableName, if_exists='append') #
+            database[search] = pd.concat([all_db, temp], ignore_index = True)
+            print('add')
+            if len(database[search]) > 1000:
+                return database[search].tail(1000)
+            else:
+               return database[search]
+        elif (len(temp) > 0) & ((total['created_at'].min() - all_db['created_at'].max()).seconds >= 120): 
+            temp = clean_and_predict(temp)
+            temp = temp.sort_values(by = 'created_at')
+            database[search] = temp
+            print('gap')
+            return database[search]
         else :
-            return conn.execute('select * from {}'.format(tableName)).fetchall()
+            return database[search]
             # return temp
 
-    except :
+    else :
         print ('alternative')
         total = clean_and_predict(total)
         print ('clean')
         total = total.sort_values(by = 'created_at')
-        total.to_sql(con=conn, name=tableName) #
+        # total.to_sql(con=conn, name=tableName) #
+        database[search] = total
         print('complete')
-        return conn.execute('select * from {}'.format(tableName)).fetchall()
+        return database[search]
+
+
+
+# def append_db(search, n):
+#     total = create_tweet_df(search,n)
+#     search = '_'.join(search.split())
+#     global database
+#     # print(total.columns)
+#     tableName = search+'_'+str(datetime.datetime.now().day)+str(datetime.datetime.now().month)+str(datetime.datetime.now().year)    
+#     try :
+#         print('try')
+#         all_db = conn.execute('select * from {}'.format(tableName)).fetchall()
+#         print ('succeed')
+#         all_db = pd.DataFrame(all_db, columns = ['index','created_at','source','text','user_id','user_screen_name','user_name','user_created_at','user_follower_count', 'text_clean','sentimen','sentimen_neg'])
+#         all_db.index = all_db['index']
+#         all_db.drop('index', axis = 1, inplace = True)
+#         all_db['created_at'] = pd.to_datetime(all_db['created_at'], utc = True)
+#         temp = total[total['created_at'] > all_db['created_at'].max()]
+#         if len(temp) > 0:
+#             conn.execute('ALTER TABLE {}'.format(tableName))
+#             temp = clean_and_predict(temp)
+#             temp = temp.sort_values(by = 'created_at')
+#             # print(temp.columns)
+#             temp.to_sql(con=conn, name=tableName, if_exists='append') #
+#             print('add')
+#             return conn.execute('select * from {}'.format(tableName)).fetchall()
+#         else :
+#             return conn.execute('select * from {}'.format(tableName)).fetchall()
+#             # return temp
+
+#     except :
+#         print ('alternative')
+#         total = clean_and_predict(total)
+#         print ('clean')
+#         total = total.sort_values(by = 'created_at')
+#         total.to_sql(con=conn, name=tableName) #
+#         print('complete')
+#         return conn.execute('select * from {}'.format(tableName)).fetchall()
 
 
     # except :
@@ -138,17 +245,21 @@ def append_db(search, n):
 # data = pd.DataFrame(db, columns = ['index', 'created_at', 'source', 'text', 'user_id', 'user_screen_name', 'user_name', 'user_created_at', 'user_follower_count'])
 # df = data[['created_at','user_screen_name','text']]
 # print(df)
-# print(append_db('ahok',100))
+# append_db('jokowi',100)
+# # time.sleep(60)
+# # append_db('jokowi',100)
+# time.sleep(240)
+# append_db('jokowi',100)
 
-def word_cloud_positive(df, column):
-    plt.figure(figsize = (12,8))
-    text = " ".join(review for review in df[df['sentimen'] == 1][column])
+# def word_cloud_positive(df, column):
+#     plt.figure(figsize = (12,8))
+#     text = " ".join(review for review in df[df['sentimen'] == 1][column])
 
-    # Create and generate a word cloud image:
-    wordcloud = WordCloud().generate(text)
+#     # Create and generate a word cloud image:
+#     wordcloud = WordCloud().generate(text)
 
-    # Display the generated image:
-    plt.imshow(wordcloud, interpolation='bilinear')
-    plt.axis("off")
-    plt.show()
-    plt.savefig('positive_cloud.png')
+#     # Display the generated image:
+#     plt.imshow(wordcloud, interpolation='bilinear')
+#     plt.axis("off")
+#     plt.show()
+#     plt.savefig('positive_cloud.png')
